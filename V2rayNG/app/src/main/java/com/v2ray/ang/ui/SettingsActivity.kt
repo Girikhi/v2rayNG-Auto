@@ -1,14 +1,21 @@
 package com.v2ray.ang.ui
 
+import android.graphics.Typeface
 import android.os.Bundle
+import android.text.InputType
+import android.view.Gravity
 import android.view.View
 import androidx.preference.CheckBoxPreference
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
+import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.VPN
 import com.v2ray.ang.R
+import com.v2ray.ang.enums.ManualConfigMode
+import com.v2ray.ang.extension.toast
+import com.v2ray.ang.handler.ManualVariantConfig
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.helper.MmkvPreferenceDataStore
 import com.v2ray.ang.util.Utils
@@ -40,6 +47,12 @@ class SettingsActivity : BaseActivity() {
         private val fragmentPackets by lazy { findPreference<ListPreference>(AppConfig.PREF_FRAGMENT_PACKETS) }
         private val fragmentLength by lazy { findPreference<EditTextPreference>(AppConfig.PREF_FRAGMENT_LENGTH) }
         private val fragmentInterval by lazy { findPreference<EditTextPreference>(AppConfig.PREF_FRAGMENT_INTERVAL) }
+        private val manualVariantsJson by lazy {
+            findPreference<EditTextPreference>(AppConfig.PREF_MANUAL_VARIANTS_JSON)
+        }
+        private val resetManualVariants by lazy {
+            findPreference<Preference>(AppConfig.PREF_RESET_MANUAL_VARIANTS)
+        }
 
         private val mode by lazy { findPreference<ListPreference>(AppConfig.PREF_MODE) }
 
@@ -86,6 +99,38 @@ class SettingsActivity : BaseActivity() {
                 updateFragment(newValue as Boolean)
                 true
             }
+
+            manualVariantsJson?.setOnBindEditTextListener { editor ->
+                editor.inputType = InputType.TYPE_CLASS_TEXT or
+                    InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                editor.typeface = Typeface.MONOSPACE
+                editor.gravity = Gravity.TOP or Gravity.START
+                editor.textDirection = View.TEXT_DIRECTION_LTR
+                editor.isSingleLine = false
+                editor.minLines = 12
+                editor.maxLines = 22
+                editor.setHorizontallyScrolling(false)
+                editor.setSelection(editor.text?.length ?: 0)
+            }
+            manualVariantsJson?.setOnPreferenceChangeListener { _, newValue ->
+                val raw = newValue as? String ?: return@setOnPreferenceChangeListener false
+                if (ManualVariantConfig.validationError(raw) != null) {
+                    context?.toast(R.string.toast_manual_variants_invalid)
+                    false
+                } else {
+                    ManualVariantConfig.invalidate()
+                    updateManualVariantSummary(raw)
+                    true
+                }
+            }
+            resetManualVariants?.setOnPreferenceClickListener {
+                manualVariantsJson?.text = ManualVariantConfig.DEFAULT_JSON
+                ManualVariantConfig.invalidate()
+                updateManualVariantSummary()
+                context?.toast(R.string.toast_manual_variants_reset)
+                true
+            }
+            updateManualVariantSummary()
 
             mode?.setOnPreferenceChangeListener { pref, newValue ->
                 val valueStr = newValue.toString()
@@ -243,6 +288,16 @@ class SettingsActivity : BaseActivity() {
             fragmentPackets?.isEnabled = enabled
             fragmentLength?.isEnabled = enabled
             fragmentInterval?.isEnabled = enabled
+        }
+
+        private fun updateManualVariantSummary(raw: String? = manualVariantsJson?.text) {
+            manualVariantsJson?.summary = if (
+                ManualVariantConfig.validationError(raw.orEmpty()) == null
+            ) {
+                getString(R.string.summary_manual_variants_json, ManualConfigMode.entries.size)
+            } else {
+                getString(R.string.summary_manual_variants_json_invalid)
+            }
         }
 
         private fun updateDynamicSocksPort(enabled: Boolean) {

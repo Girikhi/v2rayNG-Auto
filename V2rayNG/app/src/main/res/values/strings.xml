@@ -322,10 +322,13 @@
     <string name="simple_server_address_description">Server address: %1$s</string>
     <string name="simple_mode_original">Original</string>
     <string name="simple_mode_fragment">Fragment</string>
+    <string name="simple_mode_fine_fragment">Fine Fragment</string>
     <string name="simple_mode_google_doh">Google DoH</string>
     <string name="simple_mode_unavailable">Unavailable</string>
     <string name="simple_mode_fragment_unavailable">Fragment · unsupported transport</string>
+    <string name="simple_mode_fine_fragment_unavailable">Fine Fragment · TLS/TCP required</string>
     <string name="simple_fragment_requires_tcp">Fragment requires a TCP-based transport. Use Original or Google DoH for this config.</string>
+    <string name="simple_fine_fragment_requires_tls">Fine Fragment requires TLS over a TCP-based transport. Use another variant for this config.</string>
     <string name="simple_status_local">Local</string>
     <string name="simple_invalid_import">No valid config found. Copy a config link or a subscription URL.</string>
     <string name="simple_qr_unavailable">Cannot create a QR code for this account. Use Clipboard instead.</string>
@@ -480,6 +483,14 @@
     <string name="title_pref_fragment_length">Fragment Length (min-max)</string>
     <string name="title_pref_fragment_interval">Fragment Interval (min-max)</string>
     <string name="title_pref_fragment_enabled">Enable Fragment</string>
+    <string name="title_manual_variants_json">Variant definitions (JSON)</string>
+    <string name="dialog_manual_variants_json">Edit variant definitions</string>
+    <string name="summary_manual_variants_json">Valid JSON · %1$d built-in variants</string>
+    <string name="summary_manual_variants_json_invalid">Invalid JSON · tested defaults are active</string>
+    <string name="title_reset_manual_variants">Reset variant definitions</string>
+    <string name="summary_reset_manual_variants">Restore the tested defaults</string>
+    <string name="toast_manual_variants_invalid">Invalid variant JSON. Nothing was changed.</string>
+    <string name="toast_manual_variants_reset">Variant definitions restored.</string>
 
     <string name="update_check_for_update">Check for update</string>
     <string name="update_already_latest_version">Already on the latest version</string>

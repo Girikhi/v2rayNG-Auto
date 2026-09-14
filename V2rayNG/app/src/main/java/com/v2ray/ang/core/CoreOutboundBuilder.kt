@@ -11,6 +11,7 @@ import com.v2ray.ang.extension.isNotNullEmpty
 import com.v2ray.ang.extension.nullIfBlank
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.ManualConfigModes
+import com.v2ray.ang.handler.ManualVariantConfig
 import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.LogUtil
@@ -37,7 +38,9 @@ object CoreOutboundBuilder {
         }
 
         outbound ?: return null
-        ManualConfigModes.applyFragment(profileItem, outbound)
+        if (ManualConfigModes.isFragmentMode(profileItem)) {
+            ManualConfigModes.applyFragment(profileItem, outbound, ManualVariantConfig.current())
+        }
         val ret = updateOutboundWithGlobalSettings(outbound)
         if (!ret) return null
         return outbound

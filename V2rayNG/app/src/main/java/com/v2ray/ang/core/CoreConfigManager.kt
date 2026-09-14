@@ -15,6 +15,7 @@ import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.extension.isNotNullEmpty
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.ManualConfigModes
+import com.v2ray.ang.handler.ManualVariantConfig
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.JsonUtil
@@ -54,9 +55,17 @@ object CoreConfigManager {
      *
      * The core flow is reused, then non-essential sections are removed.
      */
-    fun getV2rayConfig4Speedtest(context: Context, guid: String): ConfigResult {
+    fun getV2rayConfig4Speedtest(
+        context: Context,
+        guid: String,
+        fineFragmentUseFallback: Boolean? = null,
+    ): ConfigResult {
         try {
-            val configContext = CoreConfigContextBuilder.build(context, guid)
+            val configContext = CoreConfigContextBuilder.build(
+                context,
+                guid,
+                fineFragmentUseFallback = fineFragmentUseFallback,
+            )
                 ?: return ConfigResult(status = false, guid = guid, errorMessage = "Failed to build config context")
             if (configContext.isCustom) {
                 return buildV2rayCustomConfig(configContext)
@@ -195,7 +204,7 @@ object CoreConfigManager {
         applySpeedDisabled(v2rayConfig)
         resolveOutboundDomainsToHosts(v2rayConfig)
         if (ManualConfigModes.usesGoogleDns(primaryResolvedOutbound.profile)) {
-            ManualConfigModes.applyGoogleDns(v2rayConfig)
+            ManualConfigModes.applyGoogleDns(v2rayConfig, ManualVariantConfig.current())
         }
 
         return v2rayConfig

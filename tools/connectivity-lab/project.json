@@ -1,0 +1,9 @@
+{
+  "name": "vless-connectivity-lab",
+  "version": "0.1.0",
+  "description": "Redacted VLESS transport, fragmentation, and TLS fingerprint test matrix",
+  "platform": "windows-powershell",
+  "entryPoint": "Invoke-VlessConnectivityLab.ps1",
+  "runtimeInstaller": "Install-XrayRuntime.ps1",
+  "xrayVersion": "26.6.1"
+}

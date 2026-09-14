@@ -47,6 +47,8 @@ Versions installed with the former upstream package ID cannot be upgraded in pla
 - Real-delay ping results using the familiar v2rayNG latency colors.
 - Failed configurations remain visible and move to the bottom after a ping, without changing the order of working servers.
 - The first working server is selected automatically and is ready to connect.
+- Manual and share-link subscriptions expose Original, Fragment, Fine Fragment, and Google DoH variants without changing the source names.
+- Fine Fragment uses the tested `tlshello`/`10-20`/`1-5` profile with an Edge fingerprint, then silently retries Xray native TLS if the real probe fails.
 
 ## Subscription formats
 
@@ -80,6 +82,12 @@ This lets compatible Super Admin panels deliver fresh configurations without req
 5. Tap the large start button to connect.
 
 Use **Ping** to test the account again or **Refresh** to download a fresh subscription immediately.
+
+## Editable variant definitions
+
+Open **Settings → Fragment Settings → Variant definitions (JSON)** to edit the runtime values for the built-in variants. The JSON controls Fragment packet ranges, the Fine Fragment primary and fallback fingerprints, and the encrypted DNS URL. The editor accepts only version 1 definitions containing all four storage-compatible variant IDs; malformed or unsafe values are rejected without changing the active configuration. **Reset variant definitions** restores the tested defaults.
+
+The reusable Windows connectivity tester is kept as an independent project in [`tools/connectivity-lab/`](tools/connectivity-lab/). Its portable Xray runtime, credentials, and generated reports remain local and are ignored by Git.
 
 ### راهنمای کوتاه فارسی
 
@@ -117,6 +125,8 @@ The canonical APK is built by [GitHub Actions](https://github.com/Girikhi/v2rayN
 4. Signs the APK using repository secrets.
 5. Checks the app name, version, non-debuggable state, and universal package.
 6. Uploads only the universal APK artifact.
+
+Local unit-test compilation can opt into the repository mirrors with `V2RAYNG_USE_MIRRORS=true`; GitHub Actions continues to use the canonical Google and Maven repositories. APK distribution remains GitHub-only.
 
 Forks that run this workflow must configure these Actions secrets:
 

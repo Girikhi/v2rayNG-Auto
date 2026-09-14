@@ -55,8 +55,13 @@ class MainRecyclerAdapter(
 
         val manual = ManualConfigModes.isManual(server.profile)
         val hasMode = ManualConfigModes.hasMode(server.profile)
-        val fragmentUnavailable = hasMode && server.profile.manualMode == ManualConfigMode.FRAGMENT &&
-            !ManualConfigModes.supportsFragment(server.profile)
+        val fragmentUnavailable = hasMode && ManualConfigModes.isFragmentMode(server.profile) && (
+            if (ManualConfigModes.usesFineFragment(server.profile)) {
+                !ManualConfigModes.supportsFineFragment(server.profile)
+            } else {
+                !ManualConfigModes.supportsFragment(server.profile)
+            }
+        )
         holder.binding.tvName.text = if (manual) server.profile.remarks
             else context.getString(R.string.simple_server_number, position + 1)
         // RecyclerView reuses holders across accounts: reset both constraints for subscriptions.
@@ -81,6 +86,8 @@ class MainRecyclerAdapter(
         holder.binding.tvMode.setText(when (server.profile.manualMode) {
             ManualConfigMode.FRAGMENT -> if (fragmentUnavailable) R.string.simple_mode_fragment_unavailable
                 else R.string.simple_mode_fragment
+            ManualConfigMode.FINE_FRAGMENT -> if (fragmentUnavailable) R.string.simple_mode_fine_fragment_unavailable
+                else R.string.simple_mode_fine_fragment
             ManualConfigMode.GOOGLE_DOH -> R.string.simple_mode_google_doh
             else -> R.string.simple_mode_original
         })
@@ -115,7 +122,13 @@ class MainRecyclerAdapter(
             if (selected) R.color.md_theme_primary else android.R.color.transparent
         )
         holder.binding.infoContainer.setOnClickListener {
-            if (fragmentUnavailable) context.toast(R.string.simple_fragment_requires_tcp)
+            if (fragmentUnavailable) context.toast(
+                if (ManualConfigModes.usesFineFragment(server.profile)) {
+                    R.string.simple_fine_fragment_requires_tls
+                } else {
+                    R.string.simple_fragment_requires_tcp
+                }
+            )
             else adapterListener?.onSelectServer(server.guid)
         }
     }

@@ -220,24 +220,29 @@ object AngConfigManager {
         return variants.size
     }
 
-    /** Upgrade existing manual accounts without replacing their original configs. */
+    /** Upgrade existing manual and subscription variant sets without replacing their configs. */
     fun ensureManualConfigModes(): Boolean {
-        val accountId = AppConfig.DEFAULT_SUBSCRIPTION_ID
-        val existing = MmkvManager.decodeServerList(accountId).mapNotNull { guid ->
-            MmkvManager.decodeServerConfig(guid)?.let { ServersCache(guid, it) }
+        var changedAny = false
+        val accountIds = (listOf(AppConfig.DEFAULT_SUBSCRIPTION_ID) + MmkvManager.decodeSubsList())
+            .distinct()
+        accountIds.forEach { accountId ->
+            val existing = MmkvManager.decodeServerList(accountId).mapNotNull { guid ->
+                MmkvManager.decodeServerConfig(guid)?.let { ServersCache(guid, it) }
+            }
+            if (existing.isEmpty()) return@forEach
+            val completed = ManualConfigModes.completeModes(existing)
+            val originals = existing.associateBy { it.guid }
+            val changed = completed.filter { item ->
+                val previous = originals[item.guid]?.profile
+                previous == null || previous.manualMode != item.profile.manualMode ||
+                    previous.manualSourceId != item.profile.manualSourceId
+            }
+            if (changed.isEmpty()) return@forEach
+            changed.forEach { MmkvManager.encodeProfileDirect(it.guid, JsonUtil.toJson(it.profile)) }
+            MmkvManager.encodeServerList(completed.map { it.guid }.toMutableList(), accountId)
+            changedAny = true
         }
-        if (existing.isEmpty()) return false
-        val completed = ManualConfigModes.completeModes(existing)
-        val originals = existing.associateBy { it.guid }
-        val changed = completed.filter { item ->
-            val previous = originals[item.guid]?.profile
-            previous == null || previous.manualMode != item.profile.manualMode ||
-                previous.manualSourceId != item.profile.manualSourceId
-        }
-        if (changed.isEmpty()) return false
-        changed.forEach { MmkvManager.encodeProfileDirect(it.guid, JsonUtil.toJson(it.profile)) }
-        MmkvManager.encodeServerList(completed.map { it.guid }.toMutableList(), accountId)
-        return true
+        return changedAny
     }
 
     /**

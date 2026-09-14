@@ -8,6 +8,8 @@ import com.v2ray.ang.enums.CoreResolvedType
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.extension.isNotNullEmpty
+import com.v2ray.ang.handler.ManualConfigModes
+import com.v2ray.ang.handler.ManualVariantConfig
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.util.LogUtil
@@ -27,8 +29,24 @@ object CoreConfigContextBuilder {
      *
      * Null is returned only when the selected profile cannot be loaded.
      */
-    fun build(context: Context, guid: String): CoreConfigContext? {
-        val config = MmkvManager.decodeServerConfig(guid) ?: return null
+    fun build(
+        context: Context,
+        guid: String,
+        fineFragmentUseFallback: Boolean? = null,
+    ): CoreConfigContext? {
+        val storedConfig = MmkvManager.decodeServerConfig(guid) ?: return null
+        val config = if (ManualConfigModes.usesFineFragment(storedConfig)) {
+            val useFallback = fineFragmentUseFallback
+                ?: MmkvManager.decodeServerAffiliationInfo(guid)?.useFineFragmentFallback
+                ?: false
+            ManualConfigModes.runtimeProfile(
+                storedConfig,
+                useFineFragmentFallback = useFallback,
+                variants = ManualVariantConfig.current(),
+            )
+        } else {
+            storedConfig
+        }
 
         // CUSTOM: return immediately — CoreConfigManager handles this path on its own.
         if (config.configType == EConfigType.CUSTOM) {

@@ -265,6 +265,14 @@ object MmkvManager {
         serverAffStorage.encode(guid, JsonUtil.toJson(aff))
     }
 
+    /** Remembers which hidden Fine Fragment branch passed its last real probe. */
+    fun encodeFineFragmentFallback(guid: String, useFallback: Boolean) {
+        if (guid.isBlank()) return
+        val aff = decodeServerAffiliationInfo(guid) ?: ServerAffiliationInfo()
+        aff.useFineFragmentFallback = useFallback
+        serverAffStorage.encode(guid, JsonUtil.toJson(aff))
+    }
+
     /**
      * Clears all test delay results.
      *

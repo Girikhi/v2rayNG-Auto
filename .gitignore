@@ -61,6 +61,11 @@ V2rayNG/app/google-services.json
 *.sublime-workspace
 *.sublime-project
 
+# Local connectivity lab (runtime, secrets, and generated reports)
+/tools/connectivity-lab/runtime/
+/tools/connectivity-lab/private/
+/tools/connectivity-lab/results/
+
 # Ignore OS-specific files
 Thumbs.db
 .DS_Store

@@ -44,7 +44,7 @@ class ManualConfigModesTest {
     )
 
     @Test
-    fun createsThreeSeparateModesWithoutChangingNamesOrConnectionFields() {
+    fun createsSeparateModesWithoutChangingNamesOrConnectionFields() {
         val source = profile()
         val variants = ManualConfigModes.variants(source, "source-id")
         assertEquals(ManualConfigMode.entries, variants.map { it.manualMode })
@@ -67,11 +67,12 @@ class ManualConfigModesTest {
 
         val expanded = ManualConfigModes.expandSubscriptionProfiles(listOf(subscribed, composite))
 
-        assertEquals(4, expanded.size)
-        assertEquals(ManualConfigMode.entries, expanded.take(3).map { it.manualMode })
-        assertTrue(expanded.take(3).all { it.subscriptionId == "panel-account" })
-        assertTrue(expanded.take(3).all { it.remarks == subscribed.remarks })
-        assertEquals(1, expanded.take(3).map { it.manualSourceId }.distinct().size)
+        val modeCount = ManualConfigMode.entries.size
+        assertEquals(modeCount + 1, expanded.size)
+        assertEquals(ManualConfigMode.entries, expanded.take(modeCount).map { it.manualMode })
+        assertTrue(expanded.take(modeCount).all { it.subscriptionId == "panel-account" })
+        assertTrue(expanded.take(modeCount).all { it.remarks == subscribed.remarks })
+        assertEquals(1, expanded.take(modeCount).map { it.manualSourceId }.distinct().size)
         assertEquals(composite, expanded.last())
         assertNull(expanded.last().manualMode)
     }
@@ -80,10 +81,10 @@ class ManualConfigModesTest {
     fun migrationKeepsOriginalGuidAndIsIdempotent() {
         val original = ServersCache("selected-guid", profile())
         val completed = ManualConfigModes.completeModes(listOf(original))
-        assertEquals(3, completed.size)
+        assertEquals(ManualConfigMode.entries.size, completed.size)
         assertEquals("selected-guid", completed.first().guid)
         assertEquals(ManualConfigMode.entries, completed.map { it.profile.manualMode })
-        assertEquals(3, completed.map { it.guid }.distinct().size)
+        assertEquals(ManualConfigMode.entries.size, completed.map { it.guid }.distinct().size)
         assertTrue(completed.all { it.profile.manualSourceId == "selected-guid" })
         assertTrue(completed.all { it.profile.remarks == original.profile.remarks })
         assertNull(original.profile.manualMode)
@@ -95,16 +96,35 @@ class ManualConfigModesTest {
         val completed = ManualConfigModes.completeModes(listOf(ServersCache("one", profile())))
         val partial = completed.filter { it.profile.manualMode != ManualConfigMode.GOOGLE_DOH }
         val repaired = ManualConfigModes.completeModes(partial)
-        assertEquals(3, repaired.size)
+        assertEquals(ManualConfigMode.entries.size, repaired.size)
         assertTrue(repaired.map { it.guid }.containsAll(partial.map { it.guid }))
         assertEquals(ManualConfigMode.entries.toSet(), repaired.map { it.profile.manualMode }.toSet())
         assertEquals(JsonUtil.toJson(repaired), JsonUtil.toJson(ManualConfigModes.completeModes(repaired)))
     }
 
     @Test
+    fun migrationAddsFineFragmentToExistingSubscriptionVariantSets() {
+        val sourceId = "subscription-source"
+        val oldVariants = ManualConfigModes.variants(
+            profile().copy(subscriptionId = "panel-account"),
+            sourceId,
+        ).filter { it.manualMode != ManualConfigMode.FINE_FRAGMENT }
+            .mapIndexed { index, item -> ServersCache("sub-$index", item) }
+
+        val completed = ManualConfigModes.completeModes(oldVariants)
+
+        assertEquals(ManualConfigMode.entries.size, completed.size)
+        assertEquals(ManualConfigMode.entries.toSet(), completed.map { it.profile.manualMode }.toSet())
+        assertTrue(completed.all { it.profile.subscriptionId == "panel-account" })
+        assertTrue(completed.all { it.profile.manualSourceId == sourceId })
+        assertTrue(completed.map { it.guid }.containsAll(oldVariants.map { it.guid }))
+        assertEquals(JsonUtil.toJson(completed), JsonUtil.toJson(ManualConfigModes.completeModes(completed)))
+    }
+
+    @Test
     fun migrationRepairsMissingSourceIdOnlyOnce() {
         val completed = ManualConfigModes.completeModes(listOf(ServersCache("one", profile(ManualConfigMode.ORIGINAL))))
-        assertEquals(3, completed.size)
+        assertEquals(ManualConfigMode.entries.size, completed.size)
         assertTrue(completed.all { it.profile.manualSourceId == "one" })
         assertEquals(JsonUtil.toJson(completed), JsonUtil.toJson(ManualConfigModes.completeModes(completed)))
     }
@@ -114,8 +134,11 @@ class ManualConfigModesTest {
         val completed = ManualConfigModes.completeModes(listOf(
             ServersCache("one", profile()), ServersCache("two", profile()),
         ))
-        assertEquals(6, completed.size)
-        assertEquals(mapOf("one" to 3, "two" to 3), completed.groupingBy { it.profile.manualSourceId }.eachCount())
+        assertEquals(ManualConfigMode.entries.size * 2, completed.size)
+        assertEquals(
+            mapOf("one" to ManualConfigMode.entries.size, "two" to ManualConfigMode.entries.size),
+            completed.groupingBy { it.profile.manualSourceId }.eachCount(),
+        )
     }
 
     @Test
@@ -166,7 +189,7 @@ class ManualConfigModesTest {
                 }
             }
             val reloaded = ManualConfigModes.completeModes(editedEntries)
-            assertEquals(3, reloaded.size)
+            assertEquals(ManualConfigMode.entries.size, reloaded.size)
             assertEquals(entries.map { it.guid }, reloaded.map { it.guid })
             val edited = reloaded.single { it.profile.manualMode == mode }.profile
             assertEquals(fullName, edited.remarks)
@@ -193,6 +216,52 @@ class ManualConfigModesTest {
         assertEquals("50-100", settings.get("length").asString)
         assertEquals("10-20", settings.get("delay").asString)
         assertEquals(before, JsonUtil.toJson(source))
+    }
+
+    @Test
+    fun fineFragmentUsesTestedValuesAndRuntimeOnlyFingerprints() {
+        val source = profile(ManualConfigMode.FINE_FRAGMENT).copy(fingerPrint = "chrome")
+        val before = JsonUtil.toJson(source)
+        val definitions = ManualVariantConfig.defaults()
+        val outbound = config().outbounds.first()
+
+        ManualConfigModes.applyFragment(source, outbound, definitions)
+
+        val settings = (outbound.streamSettings!!.finalmask as JsonObject)
+            .getAsJsonArray("tcp").single().asJsonObject.getAsJsonObject("settings")
+        assertEquals("tlshello", settings.get("packets").asString)
+        assertEquals("10-20", settings.get("length").asString)
+        assertEquals("1-5", settings.get("delay").asString)
+        assertEquals("edge", ManualConfigModes.runtimeProfile(source, false, definitions).fingerPrint)
+        assertEquals("unsafe", ManualConfigModes.runtimeProfile(source, true, definitions).fingerPrint)
+        assertEquals(before, JsonUtil.toJson(source))
+    }
+
+    @Test
+    fun editableVariantJsonIsValidatedAndChangesRuntimeValues() {
+        val customJson = ManualVariantConfig.DEFAULT_JSON
+            .replace("\"length\": \"10-20\"", "\"length\": \"7-11\"")
+            .replace("\"delay\": \"1-5\"", "\"delay\": \"2-4\"")
+            .replace("\"fingerprint\": \"edge\"", "\"fingerprint\": \"ios\"")
+            .replace("https://dns.google/dns-query", "https://cloudflare-dns.com/dns-query")
+        assertNull(ManualVariantConfig.validationError(customJson))
+        val definitions = ManualVariantConfig.parse(customJson)
+        val fine = definitions.definition(ManualConfigMode.FINE_FRAGMENT)
+        assertEquals("7-11", fine.length)
+        assertEquals("2-4", fine.delay)
+        assertEquals("ios", fine.fingerprint)
+        assertEquals(
+            "https://cloudflare-dns.com/dns-query",
+            definitions.definition(ManualConfigMode.GOOGLE_DOH).url,
+        )
+
+        assertNotNull(ManualVariantConfig.validationError("{}"))
+        assertNotNull(ManualVariantConfig.validationError(
+            ManualVariantConfig.DEFAULT_JSON.replace("\"1-5\"", "\"9-2\"")
+        ))
+        assertNotNull(ManualVariantConfig.validationError(
+            ManualVariantConfig.DEFAULT_JSON.replace("\"edge\"", "\"not-a-real-fingerprint\"")
+        ))
     }
 
     @Test
@@ -255,7 +324,7 @@ class ManualConfigModesTest {
     fun googleDohReplacesFallbackDnsPreservesBootstrapAndRoutesQueriesThroughProxy() {
         val runtime = config()
         ManualConfigModes.applyGoogleDns(runtime)
-        assertEquals(listOf(ManualConfigModes.GOOGLE_DOH_URL), runtime.dns!!.servers)
+        assertEquals(listOf("https://dns.google/dns-query"), runtime.dns!!.servers)
         assertEquals(AppConfig.TAG_DNS, runtime.dns!!.tag)
         assertEquals("192.0.2.1", runtime.dns!!.hosts!!["proxy.example.com"])
         assertEquals(AppConfig.DNS_GOOGLE_ADDRESSES, runtime.dns!!.hosts!![AppConfig.DNS_GOOGLE_DOMAIN])
@@ -284,7 +353,7 @@ class ManualConfigModesTest {
         val runtime = config()
         ManualConfigModes.applyGoogleDns(runtime)
         CoreConfigManager.postProcessForSpeedtest(runtime, keepDns = true)
-        assertEquals(listOf(ManualConfigModes.GOOGLE_DOH_URL), runtime.dns!!.servers)
+        assertEquals(listOf("https://dns.google/dns-query"), runtime.dns!!.servers)
         assertTrue(runtime.inbounds.isEmpty())
         assertNull(runtime.stats)
         assertNull(runtime.fakedns)

@@ -271,6 +271,17 @@
             android:key="pref_fragment_packets"
             android:summary="%s"
             android:title="@string/title_pref_fragment_packets" />
+
+        <EditTextPreference
+            android:dialogTitle="@string/dialog_manual_variants_json"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:key="pref_manual_variants_json"
+            android:title="@string/title_manual_variants_json" />
+
+        <Preference
+            android:key="pref_reset_manual_variants"
+            android:summary="@string/summary_reset_manual_variants"
+            android:title="@string/title_reset_manual_variants" />
     </PreferenceCategory>
 
 

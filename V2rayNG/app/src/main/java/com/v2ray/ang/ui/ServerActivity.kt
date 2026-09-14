@@ -176,6 +176,7 @@ class ServerActivity : BaseActivity() {
         if (config != null && ManualConfigModes.hasMode(config)) {
             supportActionBar?.subtitle = getString(when (config.manualMode) {
                 ManualConfigMode.FRAGMENT -> R.string.simple_mode_fragment
+                ManualConfigMode.FINE_FRAGMENT -> R.string.simple_mode_fine_fragment
                 ManualConfigMode.GOOGLE_DOH -> R.string.simple_mode_google_doh
                 else -> R.string.simple_mode_original
             })

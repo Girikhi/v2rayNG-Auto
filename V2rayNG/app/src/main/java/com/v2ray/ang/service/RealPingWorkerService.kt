@@ -4,11 +4,14 @@ import android.content.Context
 import com.v2ray.ang.core.CoreConfigManager
 import com.v2ray.ang.core.CoreNativeManager
 import com.v2ray.ang.dto.RealPingEvent
+import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.enums.EConfigType
+import com.v2ray.ang.enums.ManualConfigMode
 import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.extension.isNotNullEmpty
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.ManualConfigModes
+import com.v2ray.ang.handler.ManualVariantConfig
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SpeedtestManager
 import kotlinx.coroutines.CancellationException
@@ -98,9 +101,39 @@ class RealPingWorkerService(
             }
         }
 
-        val configResult = CoreConfigManager.getV2rayConfig4Speedtest(context, guid)
+        if (ManualConfigModes.usesFineFragment(config)) {
+            val primaryResult = measureRealDelay(guid, config, useFineFragmentFallback = false)
+            if (primaryResult >= 0L) {
+                MmkvManager.encodeFineFragmentFallback(guid, false)
+                return primaryResult
+            }
+
+            val fineDefinition = ManualVariantConfig.current()
+                .definition(ManualConfigMode.FINE_FRAGMENT)
+            if (fineDefinition.fallbackFingerprint.isNullOrBlank()) return retFailure
+
+            val fallbackResult = measureRealDelay(guid, config, useFineFragmentFallback = true)
+            if (fallbackResult >= 0L) {
+                MmkvManager.encodeFineFragmentFallback(guid, true)
+            }
+            return fallbackResult
+        }
+
+        return measureRealDelay(guid, config)
+    }
+
+    private fun measureRealDelay(
+        guid: String,
+        config: ProfileItem,
+        useFineFragmentFallback: Boolean? = null,
+    ): Long {
+        val configResult = CoreConfigManager.getV2rayConfig4Speedtest(
+            context,
+            guid,
+            fineFragmentUseFallback = useFineFragmentFallback,
+        )
         if (!configResult.status) {
-            return retFailure
+            return -1L
         }
         return if (ManualConfigModes.usesGoogleDns(config)) {
             CoreNativeManager.measureDelayWithDns(configResult.content, SettingsManager.getDelayTestUrl())

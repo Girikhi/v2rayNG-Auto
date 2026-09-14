@@ -364,6 +364,14 @@
     <string name="title_pref_fragment_length">طول بسته های فرگمنت (حداقل-حداکثر)</string>
     <string name="title_pref_fragment_interval">فاصله بین بسته های فرگمنت (حداقل-حداکثر)</string>
     <string name="title_pref_fragment_enabled">فعال کردن فرگمنت</string>
+    <string name="title_manual_variants_json">تعریف حالت‌ها (JSON)</string>
+    <string name="dialog_manual_variants_json">ویرایش تعریف حالت‌ها</string>
+    <string name="summary_manual_variants_json">JSON معتبر · %1$d حالت داخلی</string>
+    <string name="summary_manual_variants_json_invalid">JSON نامعتبر · تنظیمات آزمایش‌شده فعال است</string>
+    <string name="title_reset_manual_variants">بازنشانی تعریف حالت‌ها</string>
+    <string name="summary_reset_manual_variants">بازگردانی تنظیمات آزمایش‌شده</string>
+    <string name="toast_manual_variants_invalid">JSON حالت‌ها معتبر نیست. تغییری ذخیره نشد.</string>
+    <string name="toast_manual_variants_reset">تعریف حالت‌ها بازگردانی شد.</string>
 
     <string name="update_check_for_update">بررسی به روز رسانی</string>
     <string name="update_already_latest_version">در حال حاضر آخرین نسخه نصب شده است</string>
@@ -465,10 +473,13 @@
     <string name="simple_server_address_description">آدرس سرور: %1$s</string>
     <string name="simple_mode_original">اصلی</string>
     <string name="simple_mode_fragment">فرگمنت</string>
+    <string name="simple_mode_fine_fragment">فرگمنت دقیق</string>
     <string name="simple_mode_google_doh">DoH گوگل</string>
     <string name="simple_mode_unavailable">پشتیبانی نمی‌شود</string>
     <string name="simple_mode_fragment_unavailable">فرگمنت · انتقال ناسازگار</string>
+    <string name="simple_mode_fine_fragment_unavailable">فرگمنت دقیق · نیازمند TLS و TCP</string>
     <string name="simple_fragment_requires_tcp">فرگمنت به انتقال مبتنی بر TCP نیاز دارد. برای این کانفیگ از حالت اصلی یا DoH گوگل استفاده کنید.</string>
+    <string name="simple_fine_fragment_requires_tls">فرگمنت دقیق به TLS روی انتقال مبتنی بر TCP نیاز دارد. برای این کانفیگ حالت دیگری را انتخاب کنید.</string>
     <string name="simple_status_local">محلی</string>
     <string name="simple_invalid_import">کانفیگ معتبری پیدا نشد. لینک کانفیگ یا اشتراک را کپی کنید.</string>
     <string name="simple_qr_unavailable">ساخت کد کیوآر برای این حساب ممکن نیست. از کلیپ‌بورد استفاده کنید.</string>
