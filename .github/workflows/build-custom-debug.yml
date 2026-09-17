@@ -163,6 +163,7 @@ jobs:
       - name: Publish saved APK to release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           RELEASE_TITLE: ${{ inputs.release_title }}
         run: |
