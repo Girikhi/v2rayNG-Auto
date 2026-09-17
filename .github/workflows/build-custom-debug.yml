@@ -2,11 +2,24 @@ name: Build v2rayNG Auto V1.0 APK
 
 on:
   workflow_dispatch:
+    inputs:
+      saved_run_id:
+        description: "Existing successful build run ID to publish without rebuilding"
+        required: false
+        type: string
+      release_tag:
+        description: "Existing tag to publish, for example v1.0.0"
+        required: false
+        type: string
+      release_title:
+        description: "Release title"
+        required: false
+        default: "v2rayNG Auto V1.0.0"
+        type: string
   push:
     branches:
       - "codex/**"
     paths:
-      - ".github/workflows/build-custom-debug.yml"
       - "V2rayNG/**"
       - "AndroidLibXrayLite"
       - "hev-socks5-tunnel"
@@ -22,6 +35,7 @@ concurrency:
 jobs:
   build:
     name: Build signed V1.0 universal APK
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.saved_run_id == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -108,4 +122,59 @@ jobs:
           name: v2rayNG-Auto-V1.0-universal
           path: V2rayNG/app/build/outputs/apk/fdroid/release/*_universal.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
+
+  publish-saved-apk:
+    name: Publish saved universal APK
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.saved_run_id != '' && inputs.release_tag != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Validate release inputs
+        env:
+          SAVED_RUN_ID: ${{ inputs.saved_run_id }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_TITLE: ${{ inputs.release_title }}
+        run: |
+          [[ "$SAVED_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9._/-]+$ ]]
+          test -n "$RELEASE_TITLE"
+
+      - name: Download saved universal APK
+        uses: actions/download-artifact@v7
+        with:
+          name: v2rayNG-Auto-V1.0-universal
+          path: saved-apk
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.saved_run_id }}
+
+      - name: Prepare release asset
+        run: |
+          mapfile -t apks < <(find saved-apk -type f -name '*_universal.apk')
+          test "${#apks[@]}" -eq 1
+          mkdir -p release-apk
+          cp "${apks[0]}" release-apk/v2rayNG-Auto-V1.0-universal.apk
+          sha256sum release-apk/v2rayNG-Auto-V1.0-universal.apk
+
+      - name: Publish saved APK to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_TITLE: ${{ inputs.release_title }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              release-apk/v2rayNG-Auto-V1.0-universal.apk \
+              --clobber
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE"
+          else
+            gh release create "$RELEASE_TAG" \
+              release-apk/v2rayNG-Auto-V1.0-universal.apk \
+              --verify-tag \
+              --title "$RELEASE_TITLE" \
+              --generate-notes
+          fi
