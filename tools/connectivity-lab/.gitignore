@@ -1,4 +1,0 @@
-# This project intentionally keeps binaries, credentials, and generated data local.
-/runtime/
-/private/
-/results/

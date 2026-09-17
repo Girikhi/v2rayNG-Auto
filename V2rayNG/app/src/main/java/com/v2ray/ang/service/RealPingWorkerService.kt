@@ -12,6 +12,7 @@ import com.v2ray.ang.extension.isNotNullEmpty
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.ManualConfigModes
 import com.v2ray.ang.handler.ManualVariantConfig
+import com.v2ray.ang.handler.ServerHealthMemory
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SpeedtestManager
 import kotlinx.coroutines.CancellationException
@@ -49,8 +50,12 @@ class RealPingWorkerService(
                 try {
                     val result = startRealPing(guid)
                     onEvent(RealPingEvent.Result(guid, result))
+                } catch (error: CancellationException) {
+                    throw error
                 } catch (_: Throwable) {
-                    // ignore
+                    // Always publish a terminal result so an old cached success cannot survive
+                    // an attempted probe that crashed before returning normally.
+                    onEvent(RealPingEvent.Result(guid, -1L))
                 } finally {
                     val count = totalCount.decrementAndGet()
                     val left = runningCount.decrementAndGet()
@@ -93,30 +98,40 @@ class RealPingWorkerService(
             && config.server.isNotNullEmpty()
             && config.serverPort?.toIntOrNull() != null
         ) {
-            val url = config.server.orEmpty()
-            val port = config.serverPort.orEmpty().toInt()
-            val tcpTime = SpeedtestManager.socketConnectTime(url, port, 1000)
-            if (tcpTime <= -1L) {
-                return retFailure
+            val remembered = MmkvManager.decodeRememberedServerHealth(guid)
+            if (!ServerHealthMemory.canSkipSocketPreflight(remembered, System.currentTimeMillis())) {
+                val url = config.server.orEmpty()
+                val port = config.serverPort.orEmpty().toInt()
+                val tcpTime = SpeedtestManager.socketConnectTime(url, port, SOCKET_PREFLIGHT_TIMEOUT_MS)
+                if (tcpTime <= -1L) {
+                    return retFailure
+                }
             }
         }
 
         if (ManualConfigModes.usesFineFragment(config)) {
-            val primaryResult = measureRealDelay(guid, config, useFineFragmentFallback = false)
-            if (primaryResult >= 0L) {
-                MmkvManager.encodeFineFragmentFallback(guid, false)
-                return primaryResult
-            }
-
             val fineDefinition = ManualVariantConfig.current()
                 .definition(ManualConfigMode.FINE_FRAGMENT)
-            if (fineDefinition.fallbackFingerprint.isNullOrBlank()) return retFailure
-
-            val fallbackResult = measureRealDelay(guid, config, useFineFragmentFallback = true)
-            if (fallbackResult >= 0L) {
-                MmkvManager.encodeFineFragmentFallback(guid, true)
+            val hasFallback = !fineDefinition.fallbackFingerprint.isNullOrBlank()
+            val rememberedFallback = MmkvManager.decodeServerAffiliationInfo(guid)
+                ?.useFineFragmentFallback == true
+            val attempts = when {
+                !hasFallback -> listOf(false)
+                rememberedFallback -> listOf(true, false)
+                else -> listOf(false, true)
             }
-            return fallbackResult
+            attempts.forEach { useFallback ->
+                val result = measureRealDelay(
+                    guid,
+                    config,
+                    useFineFragmentFallback = useFallback,
+                )
+                if (result >= 0L) {
+                    MmkvManager.encodeFineFragmentFallback(guid, useFallback)
+                    return result
+                }
+            }
+            return retFailure
         }
 
         return measureRealDelay(guid, config)
@@ -140,5 +155,9 @@ class RealPingWorkerService(
         } else {
             CoreNativeManager.measureOutboundDelay(configResult.content, SettingsManager.getDelayTestUrl())
         }
+    }
+
+    companion object {
+        private const val SOCKET_PREFLIGHT_TIMEOUT_MS = 700
     }
 }

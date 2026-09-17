@@ -9,9 +9,11 @@ import com.v2ray.ang.dto.entities.AssetUrlItem
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.entities.RulesetItem
 import com.v2ray.ang.dto.entities.ServerAffiliationInfo
+import com.v2ray.ang.dto.entities.ServerHealthRecord
 import com.v2ray.ang.dto.entities.SubscriptionCache
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.dto.entities.WebDavConfig
+import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.Utils
 
@@ -23,6 +25,7 @@ object MmkvManager {
     private const val ID_PROFILE_FULL_CONFIG = "PROFILE_FULL_CONFIG"
     private const val ID_SERVER_RAW = "SERVER_RAW"
     private const val ID_SERVER_AFF = "SERVER_AFF"
+    private const val ID_SERVER_HEALTH = "SERVER_HEALTH"
     private const val ID_SUB = "SUB"
     private const val ID_ASSET = "ASSET"
     private const val ID_SETTING = "SETTING"
@@ -36,6 +39,7 @@ object MmkvManager {
     private val profileFullStorage by lazy { MMKV.mmkvWithID(ID_PROFILE_FULL_CONFIG, MMKV.MULTI_PROCESS_MODE) }
     private val serverRawStorage by lazy { MMKV.mmkvWithID(ID_SERVER_RAW, MMKV.MULTI_PROCESS_MODE) }
     private val serverAffStorage by lazy { MMKV.mmkvWithID(ID_SERVER_AFF, MMKV.MULTI_PROCESS_MODE) }
+    private val serverHealthStorage by lazy { MMKV.mmkvWithID(ID_SERVER_HEALTH, MMKV.MULTI_PROCESS_MODE) }
     private val subStorage by lazy { MMKV.mmkvWithID(ID_SUB, MMKV.MULTI_PROCESS_MODE) }
     private val assetStorage by lazy { MMKV.mmkvWithID(ID_ASSET, MMKV.MULTI_PROCESS_MODE) }
     private val settingsStorage by lazy { MMKV.mmkvWithID(ID_SETTING, MMKV.MULTI_PROCESS_MODE) }
@@ -263,6 +267,66 @@ object MmkvManager {
         val aff = decodeServerAffiliationInfo(guid) ?: ServerAffiliationInfo()
         aff.testDelayMillis = testResult
         serverAffStorage.encode(guid, JsonUtil.toJson(aff))
+
+        val profile = decodeServerConfig(guid) ?: return
+        if (profile.configType.isComplexType()) return
+        val memoryKey = ServerHealthMemory.key(profile)
+        if (testResult == 0L) {
+            // Editing a profile invalidates the result for its new connection identity.
+            serverHealthStorage.remove(memoryKey)
+            return
+        }
+        serverHealthStorage.encode(
+            memoryKey,
+            JsonUtil.toJson(
+                ServerHealthRecord(
+                    delayMillis = testResult,
+                    testedAtMillis = System.currentTimeMillis(),
+                    useFineFragmentFallback = aff.useFineFragmentFallback,
+                )
+            )
+        )
+    }
+
+    /** Returns a remembered result for the same effective connection, even after a sub refresh. */
+    fun decodeRememberedServerHealth(guid: String): ServerHealthRecord? {
+        val profile = decodeServerConfig(guid) ?: return null
+        if (profile.configType.isComplexType()) return null
+        val json = serverHealthStorage.decodeString(ServerHealthMemory.key(profile))
+        if (json.isNullOrBlank()) return null
+        return JsonUtil.fromJsonSafe(json, ServerHealthRecord::class.java)
+    }
+
+    /** Copies a still-useful remembered result onto the current generated server id. */
+    fun applyRememberedServerHealth(
+        guid: String,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): ServerHealthRecord? {
+        val record = decodeRememberedServerHealth(guid)
+            ?.takeIf { ServerHealthMemory.isReusable(it, nowMillis) }
+            ?: return null
+        val aff = decodeServerAffiliationInfo(guid) ?: ServerAffiliationInfo()
+        aff.testDelayMillis = record.delayMillis
+        aff.useFineFragmentFallback = record.useFineFragmentFallback
+        serverAffStorage.encode(guid, JsonUtil.toJson(aff))
+        return record
+    }
+
+    /** Bounds the persistent cache without discarding recent information for refreshed configs. */
+    fun pruneServerHealthMemory(nowMillis: Long = System.currentTimeMillis()) {
+        serverHealthStorage.allKeys()?.forEach { key ->
+            val record = serverHealthStorage.decodeString(key)
+                ?.let { JsonUtil.fromJsonSafe(it, ServerHealthRecord::class.java) }
+            if (record == null || record.testedAtMillis <= 0L ||
+                nowMillis - record.testedAtMillis > ServerHealthMemory.RETENTION_MILLIS
+            ) {
+                serverHealthStorage.remove(key)
+            }
+        }
+    }
+
+    fun clearServerHealthMemory() {
+        serverHealthStorage.clearAll()
     }
 
     /** Remembers which hidden Fine Fragment branch passed its last real probe. */

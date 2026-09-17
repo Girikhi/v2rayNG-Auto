@@ -119,6 +119,7 @@ class SettingsActivity : BaseActivity() {
                     false
                 } else {
                     ManualVariantConfig.invalidate()
+                    MmkvManager.clearServerHealthMemory()
                     updateManualVariantSummary(raw)
                     true
                 }
@@ -126,6 +127,7 @@ class SettingsActivity : BaseActivity() {
             resetManualVariants?.setOnPreferenceClickListener {
                 manualVariantsJson?.text = ManualVariantConfig.DEFAULT_JSON
                 ManualVariantConfig.invalidate()
+                MmkvManager.clearServerHealthMemory()
                 updateManualVariantSummary()
                 context?.toast(R.string.toast_manual_variants_reset)
                 true

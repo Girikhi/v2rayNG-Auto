@@ -67,6 +67,7 @@ class MainActivity : HelperBaseActivity() {
     private lateinit var accountDashboardAdapter: AccountDashboardAdapter
     private var accountDrawerExpanded = false
     private var accountDrawerAnimator: ValueAnimator? = null
+    private var connectionRequestInFlight = false
     private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
         override fun onPageSelected(position: Int) {
             val accountId = groupPagerAdapter.groups.getOrNull(position)?.id ?: return
@@ -80,8 +81,11 @@ class MainActivity : HelperBaseActivity() {
     }
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        connectionRequestInFlight = false
         if (it.resultCode == RESULT_OK) {
             startV2Ray()
+        } else if (mainViewModel.isRunning.value != true) {
+            applyRunningState(isLoading = false, isRunning = false)
         }
     }
     private val requestActivityLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -147,7 +151,6 @@ class MainActivity : HelperBaseActivity() {
                 setupGroupTab()
                 mainViewModel.reloadServerList()
             }
-            delay(650L)
             mainViewModel.startStartupHealthCheck()
         }
 
@@ -168,6 +171,13 @@ class MainActivity : HelperBaseActivity() {
 
     private fun setupViewModel() {
         mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }
+        mainViewModel.quickConnectAction.observe(this) { guid ->
+            if (mainViewModel.consumeQuickConnect(guid) &&
+                mainViewModel.isRunning.value != true
+            ) {
+                beginV2RayConnection()
+            }
+        }
         mainViewModel.isRunning.observe(this) { isRunning ->
             applyRunningState(false, isRunning)
         }
@@ -567,18 +577,32 @@ class MainActivity : HelperBaseActivity() {
     }
 
     private fun handleFabAction() {
+        if (mainViewModel.isRunning.value == true) {
+            applyRunningState(isLoading = true, isRunning = false)
+            CoreServiceManager.stopVService(this)
+        } else {
+            beginV2RayConnection()
+        }
+    }
+
+    private fun beginV2RayConnection() {
+        if (connectionRequestInFlight ||
+            mainViewModel.isRunning.value == true ||
+            CoreServiceManager.isRunning()
+        ) return
+        connectionRequestInFlight = true
         applyRunningState(isLoading = true, isRunning = false)
 
-        if (mainViewModel.isRunning.value == true) {
-            CoreServiceManager.stopVService(this)
-        } else if (SettingsManager.isVpnMode()) {
+        if (SettingsManager.isVpnMode()) {
             val intent = VpnService.prepare(this)
             if (intent == null) {
+                connectionRequestInFlight = false
                 startV2Ray()
             } else {
                 requestVpnPermission.launch(intent)
             }
         } else {
+            connectionRequestInFlight = false
             startV2Ray()
         }
     }
@@ -785,8 +809,15 @@ class MainActivity : HelperBaseActivity() {
                 ?.takeIf { it.subscriptionId == mainViewModel.subscriptionId }
             when (healthState?.phase) {
                 ServerHealthPhase.CHECKING -> {
-                    binding.fab.isEnabled = false
-                    setTestState(getString(R.string.simple_checking_servers))
+                    val hasRememberedOrFreshServer = healthState.workingCount > 0
+                    binding.fab.isEnabled = hasRememberedOrFreshServer
+                    setTestState(
+                        if (hasRememberedOrFreshServer) {
+                            getString(R.string.simple_servers_ready, healthState.workingCount)
+                        } else {
+                            getString(R.string.simple_checking_servers)
+                        }
+                    )
                 }
                 ServerHealthPhase.REFRESHING -> {
                     binding.fab.isEnabled = false

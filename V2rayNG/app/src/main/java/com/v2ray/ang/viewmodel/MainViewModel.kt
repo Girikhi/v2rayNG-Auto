@@ -30,6 +30,7 @@ import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.ManualConfigModes
 import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.handler.ServerHealthMemory
 import com.v2ray.ang.handler.SubscriptionUpdater
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.MessageUtil
@@ -50,17 +51,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isTesting by lazy { MutableLiveData<Boolean>(false) }
     val updateListAction by lazy { MutableLiveData<Int>() }
     val updateTestResultAction by lazy { MutableLiveData<String>() }
+    val quickConnectAction by lazy { MutableLiveData<String>() }
     val serverHealthState by lazy { MutableLiveData<ServerHealthState>() }
 
     private var activePingBatch: PingBatch? = null
     private var startupHealthCheckStarted = false
     private var startupRefreshAttempted = false
+    private var pendingQuickConnectGuid: String? = null
 
     private data class PingBatch(
         val subscriptionId: String,
         val serverGuids: List<String>,
         val allowAutomaticRefresh: Boolean,
         val isAfterRefresh: Boolean,
+        val completedGuids: MutableSet<String> = linkedSetOf(),
+        val workingGuids: MutableSet<String> = linkedSetOf(),
+        var firstWorkingSelected: Boolean = false,
     )
 
     /**
@@ -230,6 +236,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         startupHealthCheckStarted = true
         startupRefreshAttempted = false
+        MmkvManager.pruneServerHealthMemory()
         startRealPing(
             targetSubscriptionId = targetSubscriptionId,
             allowAutomaticRefresh = true,
@@ -247,11 +254,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             TestServiceMessage(key = AppConfig.MSG_MEASURE_CONFIG_CANCEL)
         )
 
-        val testGuids = if (targetSubscriptionId.isEmpty()) {
+        val originalGuids = if (targetSubscriptionId.isEmpty()) {
             MmkvManager.decodeAllServerList()
         } else {
             MmkvManager.decodeServerList(targetSubscriptionId)
         }.distinct()
+
+        val nowMillis = System.currentTimeMillis()
+        val rememberedByGuid = originalGuids.associateWith { guid ->
+            MmkvManager.applyRememberedServerHealth(guid, nowMillis)
+        }
+        // Kotlin's sort is stable, so known-good and unknown groups keep the user's order.
+        val testGuids = originalGuids.sortedBy { guid ->
+            ServerHealthMemory.priority(rememberedByGuid[guid], nowMillis)
+        }
+        val rememberedWorkingGuids = originalGuids.filter { guid ->
+            rememberedByGuid[guid]?.isWorking == true
+        }
+
+        if (subscriptionId == targetSubscriptionId && rememberedWorkingGuids.isNotEmpty()) {
+            MmkvManager.setSelectServer(rememberedWorkingGuids.first())
+        }
 
         activePingBatch = PingBatch(
             subscriptionId = targetSubscriptionId,
@@ -259,7 +282,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             allowAutomaticRefresh = allowAutomaticRefresh,
             isAfterRefresh = isAfterRefresh,
         )
-        MmkvManager.clearAllTestDelayResults(testGuids)
         if (subscriptionId == targetSubscriptionId) {
             reloadServerList()
         }
@@ -267,6 +289,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         serverHealthState.value = ServerHealthState(
             subscriptionId = targetSubscriptionId,
             phase = ServerHealthPhase.CHECKING,
+            workingCount = rememberedWorkingGuids.size,
             totalCount = testGuids.size,
         )
 
@@ -322,6 +345,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 remarks = sub.subscription.remarks,
             )
         }
+    }
+
+    /** Consumes a one-shot request emitted when the first fresh working server is found. */
+    @Synchronized
+    fun consumeQuickConnect(guid: String): Boolean {
+        if (pendingQuickConnectGuid != guid) return false
+        pendingQuickConnectGuid = null
+        return true
     }
 
     fun getVisibleServerCount(subscriptionId: String): Int {
@@ -488,13 +519,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            // A worker exception may leave a cleared result at zero. Once the batch is over,
-            // every non-positive result is a failure; entries remain visible and sorting moves failures last.
-            batch.serverGuids.forEach { guid ->
-                val delay = MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis ?: 0L
-                if (delay <= 0L) {
-                    MmkvManager.encodeServerTestDelayMillis(guid, -1L)
-                }
+            // Cancellation or a killed worker must not leave an unverified cached success behind.
+            batch.serverGuids.filterNot(batch.completedGuids::contains).forEach { guid ->
+                MmkvManager.encodeServerTestDelayMillis(guid, -1L)
             }
 
             if (batch.subscriptionId.isNotEmpty()) {
@@ -503,17 +530,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 sortByTestResults()
             }
 
-            val orderedGuids = if (batch.subscriptionId.isEmpty()) {
-                batch.serverGuids
-            } else {
-                MmkvManager.decodeServerList(batch.subscriptionId)
-            }
-            val workingGuids = orderedGuids.filter { guid ->
-                (MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis ?: 0L) > 0L
-            }
+            val orderedGuids = if (batch.subscriptionId.isEmpty()) batch.serverGuids
+                else MmkvManager.decodeServerList(batch.subscriptionId)
+            val workingGuids = orderedGuids.filter(batch.workingGuids::contains)
             if (workingGuids.isNotEmpty()) {
                 if (subscriptionId == batch.subscriptionId) {
-                    MmkvManager.setSelectServer(workingGuids.first())
+                    val selectedGuid = MmkvManager.getSelectServer()
+                    if (selectedGuid == null || !workingGuids.contains(selectedGuid)) {
+                        MmkvManager.setSelectServer(workingGuids.first())
+                    }
                 }
                 withContext(Dispatchers.Main) {
                     if (subscriptionId == batch.subscriptionId) {
@@ -646,6 +671,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 AppConfig.MSG_MEASURE_CONFIG_SUCCESS -> {
                     val content = intent.getStringExtra("content")
+                    content?.let(::onRealPingResult)
                     updateListAction.value = getPosition(content ?: "")
                 }
 
@@ -660,6 +686,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         isTesting.value = false
                     }
                 }
+            }
+        }
+    }
+
+    private fun onRealPingResult(guid: String) {
+        val batch = activePingBatch ?: return
+        if (guid !in batch.serverGuids || !batch.completedGuids.add(guid)) return
+
+        val delay = MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis ?: -1L
+        if (delay > 0L) {
+            batch.workingGuids.add(guid)
+            if (!batch.firstWorkingSelected && subscriptionId == batch.subscriptionId) {
+                batch.firstWorkingSelected = true
+                MmkvManager.setSelectServer(guid)
+                serverHealthState.value = ServerHealthState(
+                    subscriptionId = batch.subscriptionId,
+                    phase = ServerHealthPhase.CHECKING,
+                    workingCount = batch.workingGuids.size,
+                    totalCount = batch.serverGuids.size,
+                )
+                synchronized(this@MainViewModel) {
+                    pendingQuickConnectGuid = guid
+                }
+                quickConnectAction.value = guid
             }
         }
     }

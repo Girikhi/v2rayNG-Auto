@@ -86,7 +86,7 @@ jobs:
         run: |
           printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
           chmod +x gradlew
-          ./gradlew testFdroidReleaseUnitTest --tests 'com.v2ray.ang.handler.AccountConfigTest' --tests 'com.v2ray.ang.handler.ManualConfigModesTest' --tests 'com.v2ray.ang.handler.StructuredSubscriptionParserTest' --tests 'com.v2ray.ang.handler.SubscriptionMetadataManagerTest' --tests 'com.v2ray.ang.util.AccountDataFormatterTest' assembleFdroidRelease --no-daemon --stacktrace
+          ./gradlew testFdroidReleaseUnitTest --tests 'com.v2ray.ang.handler.AccountConfigTest' --tests 'com.v2ray.ang.handler.ManualConfigModesTest' --tests 'com.v2ray.ang.handler.ServerHealthMemoryTest' --tests 'com.v2ray.ang.handler.StructuredSubscriptionParserTest' --tests 'com.v2ray.ang.handler.SubscriptionMetadataManagerTest' --tests 'com.v2ray.ang.util.AccountDataFormatterTest' assembleFdroidRelease --no-daemon --stacktrace
 
       - name: Verify universal APK
         run: |

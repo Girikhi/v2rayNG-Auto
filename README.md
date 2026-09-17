@@ -83,11 +83,11 @@ This lets compatible Super Admin panels deliver fresh configurations without req
 
 Use **Ping** to test the account again or **Refresh** to download a fresh subscription immediately.
 
+Ping results are remembered privately on the device by effective server endpoint. On the next launch, recently working servers are checked first and remain available while a fresh background check runs. The first newly verified server is selected and connected immediately; failed servers still remain visible at the bottom of the list.
+
 ## Editable variant definitions
 
 Open **Settings → Fragment Settings → Variant definitions (JSON)** to edit the runtime values for the built-in variants. The JSON controls Fragment packet ranges, the Fine Fragment primary and fallback fingerprints, and the encrypted DNS URL. The editor accepts only version 1 definitions containing all four storage-compatible variant IDs; malformed or unsafe values are rejected without changing the active configuration. **Reset variant definitions** restores the tested defaults.
-
-The reusable Windows connectivity tester is kept as an independent project in [`tools/connectivity-lab/`](tools/connectivity-lab/). Its portable Xray runtime, credentials, and generated reports remain local and are ignored by Git.
 
 ### راهنمای کوتاه فارسی
 
